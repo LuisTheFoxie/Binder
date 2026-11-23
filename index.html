@@ -35,6 +35,11 @@
         <button id="prox" aria-label="Próxima página">›</button>
       </div>
     </div>
+    <div class="acoes">
+      <button id="btnOrganizar" class="principal">Organizar</button>
+      <button id="btnDesfazer" hidden>Desfazer</button>
+      <span id="flow" class="flow" title="Quanto as cartas desta página combinam entre si">Flow —</span>
+    </div>
     <div id="pagina" class="pagina"></div>
     <div id="barraSel" class="barra-sel" hidden>
       <span>Toque em outro espaço para mover</span>
@@ -45,6 +50,7 @@
 </main>
 
 <div id="aviso" class="aviso" role="status"></div>
+<script src="analise.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

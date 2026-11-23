@@ -12,6 +12,9 @@ let selecionado = null;
 let timer = null;
 let controle = null;
 let encontrados = {};
+let backup = null;
+let analisando = false;
+const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* ---------- Salvamento local ---------- */
 function carregar() {
@@ -113,9 +116,59 @@ function adicionar(c) {
   let i = estado.espacos.findIndex((e) => !e);
   if (i === -1) i = estado.espacos.length;
   estado.espacos[i] = carta;
+  backup = null;
   salvar();
   atualizarContador();
   avisar(`${carta.nome} adicionada (página ${Math.floor(i / porPagina()) + 1})`);
+  analisarPendentes();
+}
+
+/* ---------- Análise visual (em segundo plano) ---------- */
+async function analisarPendentes(aoProgredir) {
+  if (analisando) return;
+  analisando = true;
+  try {
+    let fila;
+    while ((fila = estado.espacos.filter((c) => c && !c.analise)).length) {
+      const total = fila.length;
+      let feitos = 0;
+      await Promise.all([0, 1, 2].map(async () => {
+        while (fila.length) {
+          const c = fila.shift();
+          const igual = estado.espacos.find((x) => x && x.id === c.id && x.analise);
+          c.analise = igual ? igual.analise : await Analise.analisarCarta(c);
+          feitos++;
+          if (aoProgredir) aoProgredir(feitos, total);
+        }
+      }));
+      salvar();
+    }
+  } finally {
+    analisando = false;
+  }
+  if ($('binder').classList.contains('ativo')) desenharBinder();
+}
+
+async function organizarBinder() {
+  const btn = $('btnOrganizar');
+  if (estado.espacos.filter(Boolean).length < 2) return avisar('Adicione pelo menos 2 cartas');
+  btn.disabled = true;
+  btn.textContent = 'Analisando…';
+  await analisarPendentes((f, t) => (btn.textContent = `Analisando ${f}/${t}…`));
+  while (analisando) await esperar(300);
+  btn.textContent = 'Organizando…';
+  await esperar(30);
+  const [c, l] = GRADES[estado.tamanho];
+  backup = estado.espacos.slice();
+  estado.espacos = Analise.organizar(estado.espacos.filter(Boolean), c, l);
+  selecionado = null;
+  pagina = 0;
+  salvar();
+  btn.disabled = false;
+  btn.textContent = 'Organizar';
+  desenharBinder();
+  const aprox = estado.espacos.filter((x) => x && x.analise && x.analise.aprox).length;
+  avisar(aprox ? `Organizado. ${aprox} carta(s) avaliada(s) só pelo tipo` : 'Binder organizado');
 }
 
 /* ---------- Binder ---------- */
@@ -147,6 +200,14 @@ function desenharBinder() {
   }
   el.innerHTML = html;
   $('barraSel').hidden = selecionado === null;
+  $('btnDesfazer').hidden = !backup;
+
+  const analises = [];
+  for (let k = 0; k < pp; k++) analises.push(estado.espacos[pagina * pp + k]?.analise || null);
+  const nota = Analise.notaPagina(analises, c, l);
+  const flow = $('flow');
+  flow.textContent = nota === null ? 'Flow —' : `Flow ${nota}`;
+  flow.className = 'flow' + (nota === null ? '' : nota >= 70 ? ' bom' : nota >= 45 ? ' medio' : ' fraco');
 }
 
 function tocarEspaco(i) {
@@ -160,6 +221,7 @@ function tocarEspaco(i) {
     estado.espacos[i] = a;
     estado.espacos[selecionado] = b;
     selecionado = null;
+    backup = null;
     limparFim();
     salvar();
   }
@@ -214,6 +276,7 @@ $('btnRemover').addEventListener('click', () => {
   const nome = estado.espacos[selecionado]?.nome;
   estado.espacos[selecionado] = null;
   selecionado = null;
+  backup = null;
   limparFim();
   salvar();
   atualizarContador();
@@ -229,5 +292,16 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { selecionado = null; desenharBinder(); }
 });
 
+$('btnOrganizar').addEventListener('click', organizarBinder);
+$('btnDesfazer').addEventListener('click', () => {
+  if (!backup) return;
+  estado.espacos = backup;
+  backup = null;
+  salvar();
+  desenharBinder();
+  avisar('Organização desfeita');
+});
+
 atualizarContador();
+analisarPendentes();
 }
